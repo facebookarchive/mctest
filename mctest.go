@@ -39,8 +39,7 @@ func (s *Server) Start() {
 	s.Port = port
 
 	waiter := waitout.New(serverListening)
-	ports := fmt.Sprint(port)
-	s.cmd = exec.Command("memcached", "-vv", "-p", ports, "-U", ports)
+	s.cmd = exec.Command("memcached", "-vv", "-l", s.Addr())
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
 	if err := s.cmd.Start(); err != nil {
@@ -60,7 +59,7 @@ func (s *Server) Start() {
 
 // Addr for the server.
 func (s *Server) Addr() string {
-	return fmt.Sprintf("localhost:%d", s.Port)
+	return fmt.Sprintf("127.0.0.1:%d", s.Port)
 }
 
 // Stop the server.
