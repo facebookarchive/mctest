@@ -4,13 +4,18 @@ package mctest
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/ParsePlatform/go.freeport"
+	"github.com/ParsePlatform/go.waitout"
 	"github.com/bradfitz/gomemcache/memcache"
 )
+
+var serverListening = []byte("server listening")
 
 // Fatalf is satisfied by testing.T or testing.B.
 type Fatalf interface {
@@ -19,9 +24,10 @@ type Fatalf interface {
 
 // Server is a unique instance of a memcached.
 type Server struct {
-	Port int
-	T    Fatalf
-	cmd  *exec.Cmd
+	Port        int
+	StopTimeout time.Duration
+	T           Fatalf
+	cmd         *exec.Cmd
 }
 
 // Start the server, this will return once the server has been started.
@@ -32,13 +38,15 @@ func (s *Server) Start() {
 	}
 	s.Port = port
 
+	waiter := waitout.New(serverListening)
 	ports := fmt.Sprint(port)
-	s.cmd = exec.Command("memcached", "-p", ports, "-U", ports)
+	s.cmd = exec.Command("memcached", "-vv", "-p", ports, "-U", ports)
 	s.cmd.Stdout = os.Stdout
-	s.cmd.Stderr = os.Stderr
+	s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
 	if err := s.cmd.Start(); err != nil {
 		s.T.Fatalf(err.Error())
 	}
+	waiter.Wait()
 
 	// Wait until TCP socket is active to ensure we don't progress until the
 	// server is ready to accept.
@@ -57,17 +65,30 @@ func (s *Server) Addr() string {
 
 // Stop the server.
 func (s *Server) Stop() {
-	s.cmd.Process.Kill()
+	fin := make(chan struct{})
+	go func() {
+		defer close(fin)
+		s.cmd.Process.Kill()
+	}()
+	select {
+	case <-fin:
+	case <-time.After(s.StopTimeout):
+	}
 }
 
 // Client returns a memcache.Client connected to the underlying server.
 func (s *Server) Client() *memcache.Client {
-	return memcache.New(s.Addr())
+	c := memcache.New(s.Addr())
+	c.Timeout = time.Second
+	return c
 }
 
 // NewStartedServer creates a new server starts it.
 func NewStartedServer(t Fatalf) *Server {
-	s := &Server{T: t}
+	s := &Server{
+		T:           t,
+		StopTimeout: 15 * time.Second,
+	}
 	s.Start()
 	return s
 }
