@@ -8,11 +8,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"testing"
 	"time"
 
-	"github.com/ParsePlatform/go.freeport"
-	"github.com/ParsePlatform/go.waitout"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/facebookgo/freeport"
+	"github.com/facebookgo/waitout"
 )
 
 var serverListening = []byte("server listening")
@@ -40,8 +41,12 @@ func (s *Server) Start() {
 
 	waiter := waitout.New(serverListening)
 	s.cmd = exec.Command("memcached", "-vv", "-l", s.Addr())
-	s.cmd.Stdout = os.Stdout
-	s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
+	if testing.Verbose() {
+		s.cmd.Stdout = os.Stdout
+		s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
+	} else {
+		s.cmd.Stderr = waiter
+	}
 	if err := s.cmd.Start(); err != nil {
 		s.T.Fatalf(err.Error())
 	}

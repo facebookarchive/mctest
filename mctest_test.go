@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/ParsePlatform/go.mctest"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/facebookgo/mctest"
 )
 
 func test(t *testing.T, answer []byte) {
@@ -44,4 +44,9 @@ func TestTwo(t *testing.T) {
 
 func TestThree(t *testing.T) {
 	test(t, []byte("44"))
+}
+
+func TestNotStoppedDoesntBlockTest(t *testing.T) {
+	t.Parallel()
+	mctest.NewStartedServer(t)
 }
