@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"testing"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -41,7 +40,7 @@ func (s *Server) Start() {
 
 	waiter := waitout.New(serverListening)
 	s.cmd = exec.Command("memcached", "-vv", "-l", s.Addr())
-	if testing.Verbose() {
+	if os.Getenv("MCTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
 	} else {
