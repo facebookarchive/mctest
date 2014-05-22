@@ -5,13 +5,16 @@ package mctest
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/facebookgo/freeport"
+	"github.com/facebookgo/stack"
 	"github.com/facebookgo/waitout"
 )
 
@@ -39,7 +42,14 @@ func (s *Server) Start() {
 	s.Port = port
 
 	waiter := waitout.New(serverListening)
-	s.cmd = exec.Command("memcached", "-vv", "-l", s.Addr())
+	s.cmd = exec.Command(
+		"memcached",
+		"-vv",
+		"-l", s.Addr(),
+		"-m", "8",
+		"-I", "256k",
+		"-P", getPidFilePath(s.T),
+	)
 	if os.Getenv("MCTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = io.MultiWriter(os.Stderr, waiter)
@@ -72,6 +82,7 @@ func (s *Server) Stop() {
 	go func() {
 		defer close(fin)
 		s.cmd.Process.Kill()
+		s.cmd.Wait()
 	}()
 	select {
 	case <-fin:
@@ -94,4 +105,40 @@ func NewStartedServer(t Fatalf) *Server {
 	}
 	s.Start()
 	return s
+}
+
+func getPidFilePath(f Fatalf) string {
+	file, err := ioutil.TempFile("", getTestNameFromStack())
+	if err != nil {
+		f.Fatalf(err.Error())
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		f.Fatalf(err.Error())
+	}
+	if err := os.Remove(name); err != nil {
+		f.Fatalf(err.Error())
+	}
+	return name
+}
+
+func getTestNameFromStack() string {
+	s := stack.Callers(1)
+
+	for _, f := range s {
+		if strings.HasSuffix(f.File, "_test.go") && strings.HasPrefix(f.Name, "Test") {
+			return fmt.Sprintf("%s_", f.Name)
+		}
+	}
+
+	// find the first caller outside ourselves
+	outside := s[0].File
+	for _, f := range s {
+		if f.File != s[0].File {
+			outside = f.Name
+			break
+		}
+	}
+
+	return fmt.Sprintf("TestNameNotFound_%s_", outside)
 }
