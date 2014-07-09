@@ -99,12 +99,22 @@ func (s *Server) Client() *memcache.Client {
 
 // NewStartedServer creates a new server starts it.
 func NewStartedServer(t Fatalf) *Server {
-	s := &Server{
-		T:           t,
-		StopTimeout: 15 * time.Second,
+	for {
+		s := &Server{
+			T:           t,
+			StopTimeout: 15 * time.Second,
+		}
+		start := make(chan struct{})
+		go func() {
+			defer close(start)
+			s.Start()
+		}()
+		select {
+		case <-start:
+			return s
+		case <-time.After(10 * time.Second):
+		}
 	}
-	s.Start()
-	return s
 }
 
 func getPidFilePath(f Fatalf) string {

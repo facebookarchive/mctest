@@ -45,8 +45,3 @@ func TestTwo(t *testing.T) {
 func TestThree(t *testing.T) {
 	test(t, []byte("44"))
 }
-
-func TestNotStoppedDoesntBlockTest(t *testing.T) {
-	t.Parallel()
-	mctest.NewStartedServer(t)
-}
