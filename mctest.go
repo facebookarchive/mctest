@@ -9,12 +9,11 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/facebookgo/freeport"
-	"github.com/facebookgo/stack"
+	"github.com/facebookgo/testname"
 	"github.com/facebookgo/waitout"
 )
 
@@ -31,6 +30,7 @@ type Server struct {
 	StopTimeout time.Duration
 	T           Fatalf
 	cmd         *exec.Cmd
+	pidFile     string
 }
 
 // Start the server, this will return once the server has been started.
@@ -42,13 +42,14 @@ func (s *Server) Start() {
 	s.Port = port
 
 	waiter := waitout.New(serverListening)
+	s.pidFile = getPidFilePath(s.T)
 	s.cmd = exec.Command(
 		"memcached",
 		"-vv",
 		"-l", s.Addr(),
 		"-m", "8",
 		"-I", "256k",
-		"-P", getPidFilePath(s.T),
+		"-P", s.pidFile,
 	)
 	if os.Getenv("MCTEST_VERBOSE") == "1" {
 		s.cmd.Stdout = os.Stdout
@@ -83,6 +84,7 @@ func (s *Server) Stop() {
 		defer close(fin)
 		s.cmd.Process.Kill()
 		s.cmd.Wait()
+		os.Remove(s.pidFile)
 	}()
 	select {
 	case <-fin:
@@ -118,7 +120,7 @@ func NewStartedServer(t Fatalf) *Server {
 }
 
 func getPidFilePath(f Fatalf) string {
-	file, err := ioutil.TempFile("", getTestNameFromStack())
+	file, err := ioutil.TempFile("", testname.Get("MC"))
 	if err != nil {
 		f.Fatalf(err.Error())
 	}
@@ -130,25 +132,4 @@ func getPidFilePath(f Fatalf) string {
 		f.Fatalf(err.Error())
 	}
 	return name
-}
-
-func getTestNameFromStack() string {
-	s := stack.Callers(1)
-
-	for _, f := range s {
-		if strings.HasSuffix(f.File, "_test.go") && strings.HasPrefix(f.Name, "Test") {
-			return fmt.Sprintf("%s_", f.Name)
-		}
-	}
-
-	// find the first caller outside ourselves
-	outside := s[0].File
-	for _, f := range s {
-		if f.File != s[0].File {
-			outside = f.Name
-			break
-		}
-	}
-
-	return fmt.Sprintf("TestNameNotFound_%s_", outside)
 }
